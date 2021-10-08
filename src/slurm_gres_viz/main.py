@@ -1,5 +1,6 @@
 from itertools import cycle
 import os
+from args import args
 
 
 def keyval_split(string):  # 'key=value' -> ('key', 'value')
@@ -56,14 +57,22 @@ def prettify_gres(jobs, nodes, color_pool):
 
 def get_stars(jobs, nodes, color_pool):  # 'gpu(IDX:0-1,3-5,7)' -> ******* with colors
     jobs_and_colors = get_jobs_and_colors(jobs, color_pool)
-    stars = {node['NodeName']: ['*']*int(node['Gres'].split(':')[-1]) for node in nodes}
+    stars = {node['NodeName']: get_components(node) for node in nodes}
     for job, color in jobs_and_colors:
         nodename = job['NodeList']
         gpu_indices = parse_gres(job['GRES'])
         for gpu_idx in gpu_indices:
-            stars[nodename][gpu_idx] = f'{color}*{bcolors.CEND}'
+            stars[nodename][gpu_idx] = f'{color}{stars[nodename][gpu_idx]}{bcolors.CEND}'
     stars = {name: ''.join(gres) for name, gres in stars.items()}
     return stars
+
+
+def get_components(node):
+    num_gres = int(node['Gres'].split(':')[-1]) 
+    if args.index:
+        return [f'[{str(i)}]' for i in range(num_gres)]
+    else:
+        return ['*'] * num_gres
 
 
 def get_jobs_and_colors(jobs, color_pool):
@@ -96,7 +105,7 @@ def print_legends(jobs, color_pool):
         field['width'] = get_col_width(jobs, field['corresponds_to'], field['name'])
 
     delimiter = '  '
-    width = 8 + sum([len(field['name']) for field in fields]) + (len(fields)-1)*len(delimiter)
+    width = sum(field['width'] for field in fields) + (len(fields)-1)*len(delimiter)
     print(f'\n{" LEGENDS ":=^{width}}')
 
     jobs_and_colors = get_jobs_and_colors(jobs, color_pool) 
@@ -115,7 +124,7 @@ def get_col_width(jobs, field, field_name):
     return max([len(job[field]) for job in jobs] + [len(field_name)])
 
 
-if __name__ == '__main__':
+def main():
     jobs_string = os.popen('scontrol show job -d').read().strip().replace('\n\n', 'BREAK').split('BREAK')
     nodes_string = os.popen('scontrol show nodes').read().strip().replace('\n\n', 'BREAK').split('BREAK')
 
@@ -126,3 +135,7 @@ if __name__ == '__main__':
 
     prettify_gres(jobs, nodes, color_pool)
     print_legends(jobs, color_pool)
+
+
+if __name__ == '__main__':
+    main()
