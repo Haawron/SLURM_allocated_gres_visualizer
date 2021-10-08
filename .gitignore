@@ -1,2 +1,6 @@
 __pycache__/
 *.egg-info/
+dist/
+deb_dist/
+*.tar.gz
+*.tar
