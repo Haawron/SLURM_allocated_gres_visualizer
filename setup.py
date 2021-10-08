@@ -10,7 +10,7 @@ setup(
     license="MIT",
     url="https://github.com/Haawron/SLURM_allocated_gres_visualizer",
     packages=['slurm_gres_viz'],
-    package_dir={'slurm_gres_viz', 'src'},
+    package_dir={'slurm_gres_viz': 'src/slurm_gres_viz'},
     entry_points={
         'console_scripts' : ['slurm-gres-viz=src.slurm_gres_viz.main:main']
     },

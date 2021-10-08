@@ -1,6 +1,6 @@
 from itertools import cycle
 import os
-from args import args
+from .args import args
 
 
 def keyval_split(string):  # 'key=value' -> ('key', 'value')
