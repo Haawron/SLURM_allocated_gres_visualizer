@@ -1,6 +1,8 @@
 # SLURM_allocated_gres_visualizer
 **The app for visualizing allocated GPUs by SLURM**
 
+![image](https://user-images.githubusercontent.com/25451196/136583132-108034a7-5088-4e46-91d7-c2c37dfd5704.png)
+
 When you are using Slurm and you want to check which gpus are allocated, you must have done something like
 - `ssh` to each computing node and run `nvidia-smi`. Then, repeat it.
 - Run `scontrol show job -d | grep GRES` and roll your eyeballs.
@@ -36,7 +38,6 @@ dpkg -i deb_dist/python3-slurm-gres-viz_1.0-1_all.deb
 # Usage
 ```bash
 slurm-gres-viz
-slurm-gres-viz -i
+slurm-gres-viz -i  # stars are replaced to indices
 ```
 
-![image](https://user-images.githubusercontent.com/25451196/136583132-108034a7-5088-4e46-91d7-c2c37dfd5704.png)
