@@ -4,3 +4,5 @@ dist/
 deb_dist/
 *.tar.gz
 *.tar
+
+test*

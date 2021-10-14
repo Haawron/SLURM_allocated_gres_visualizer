@@ -96,7 +96,7 @@ def parse_gres(gres_string):  # 'gpu(IDX:0-1,3)' -> [0, 1, 3]
 def print_legends(jobs, color_pool):
     for job in jobs:
         job['GRES_print'] = ','.join(map(str, parse_gres(job['GRES'])))
-    field_names = ['COLORS', 'USER_ID', 'JOB_ID', 'Job_NAME', 'NODE_NAME', 'ALLOCATED_GPUS']
+    field_names = ['COLORS', 'USER_ID', 'JOB_ID', 'JOB_NAME', 'NODE_NAME', 'ALLOCATED_GPUS']
     correspondences = [None, 'UserId', 'JobId', 'JobName', 'NodeList', 'GRES_print']
     
     fields = [{'name': field_name, 'corresponds_to': correspondence} for field_name, correspondence in zip(field_names, correspondences)]
@@ -125,12 +125,18 @@ def get_col_width(jobs, field, field_name):
 
 
 def main():
-    jobs_string = os.popen('scontrol show job -d').read().strip().replace('\n\n', 'BREAK').split('BREAK')
-    nodes_string = os.popen('scontrol show nodes').read().strip().replace('\n\n', 'BREAK').split('BREAK')
+    if args.test:
+        with open('./test_scontrol.txt', 'r') as f1, open('./test_nodes.txt', 'r') as f2:
+            jobs_string = f1.read().strip().split('\n\n')
+            nodes_string = f2.read().strip().split('\n\n')
+    else:
+        jobs_string = os.popen('scontrol show job -d').read().strip().split('\n\n')
+        nodes_string = os.popen('scontrol show nodes').read().strip().split('\n\n')
 
     jobs = parse_scontrol(jobs_string)  # list of dicts
     nodes = parse_scontrol(nodes_string)  # list of dicts
-    jobs = [job for job in jobs if job['JobState']=='RUNNING']  # filter RUNNING jobs
+    jobs = [job for job in jobs if job.get('JobState')=='RUNNING']  # filter RUNNING jobs
+    assert jobs, 'No Running jobs'
     color_pool = [val for key, val in bcolors.__dict__.items() if key.startswith('C') and key!='CEND']
 
     prettify_gres(jobs, nodes, color_pool)
