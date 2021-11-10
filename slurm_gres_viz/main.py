@@ -135,7 +135,7 @@ def main():
 
     jobs = parse_scontrol(jobs_string)  # list of dicts
     nodes = parse_scontrol(nodes_string)  # list of dicts
-    jobs = [job for job in jobs if job.get('JobState')=='RUNNING']  # filter RUNNING jobs
+    jobs = [job for job in jobs if job.get('JobState')=='RUNNING' and job.get('GRES')]  # filter RUNNING jobs
     assert jobs, 'No Running jobs'
     color_pool = [val for key, val in bcolors.__dict__.items() if key.startswith('C') and key!='CEND']
 
