@@ -1,28 +1,10 @@
 from itertools import cycle
 import os
-from .args import args
-
-
-def keyval_split(string):  # 'key=value' -> ('key', 'value')
-    item = string.split('=', 1)
-    if len(item)==1:  # string = 'key='
-        item.append('')
-    return item
-
-
-def parse_scontrol(scontrol_string):
-    output = []
-    for item in scontrol_string:
-        attrs = {}
-        item = item.split()  # item = ['JobId=454',...]
-        for attr_str in item:  # attr_str = 'JobId=454'
-            key, value = keyval_split(attr_str)
-            if '=' in value:  # value = 'cpu=32,node=1,billing=32'
-                keyvals = [keyval_split(attr_str_) for attr_str_ in value.split(',')]
-                value = {key: val for key, val in keyvals}
-            attrs[key] = value
-        output.append(attrs)
-    return output  # list of dicts
+import re
+if __name__ == '__main__':  # for test
+    from args import args
+else:
+    from .args import args
 
 
 class bcolors:
@@ -46,101 +28,139 @@ class bcolors:
     CBEIGE2  = '\33[96m'
 #     CWHITE2  = '\33[97m'
 
-
-def prettify_gres(jobs, nodes, color_pool):
-    stars = get_stars(jobs, nodes, color_pool)
-    max_gres = max([len(val) for _, val in stars.items()])
-    max_nodename = max([len(node['NodeName']) for node in nodes])
-    for nodename, gres in stars.items():
-        print(f'{nodename:<{max_nodename}}: {gres:<{max_gres}}')
+color_pool = [val for key, val in bcolors.__dict__.items() if key.startswith('C') and key!='CEND']
 
 
-def get_stars(jobs, nodes, color_pool):  # 'gpu(IDX:0-1,3-5,7)' -> ******* with colors
-    jobs_and_colors = get_jobs_and_colors(jobs, color_pool)
-    stars = {node['NodeName']: get_components(node) for node in nodes}
-    for job, color in jobs_and_colors:
-        nodename = job['NodeList']
-        gpu_indices = parse_gres(job['GRES'])
-        for gpu_idx in gpu_indices:
-            stars[nodename][gpu_idx] = f'{color}{stars[nodename][gpu_idx]}{bcolors.CEND}'
-    stars = {name: ''.join(gres) for name, gres in stars.items()}
-    return stars
+def main():
+    job_strings, node_strings = get_strings()
+    num_gpus_for_each_node = dict(get_node_attrs(node_string) for node_string in node_strings)
+    jobs = [get_job_attrs(job_string) for job_string in job_strings if check_job_running_with_gres(job_string)]
+    prettify_gres(jobs, num_gpus_for_each_node)
+    print_legends(jobs)
 
 
-def get_components(node):
-    num_gres = int(node['Gres'].split(':')[-1]) 
-    if args.index:
-        return [f'[{str(i)}]' for i in range(num_gres)]
+def get_strings():
+    if args.test:
+        with open('./test_jobs.txt', 'r') as f1, open('./test_nodes.txt', 'r') as f2:
+            job_strings = f1.read().strip().split('\n\n')
+            node_strings = f2.read().strip().split('\n\n')
     else:
-        return ['*'] * num_gres
+        job_strings = os.popen('scontrol show job -d').read().strip().split('\n\n')
+        node_strings = os.popen('scontrol show nodes').read().strip().split('\n\n')
+
+    return job_strings, node_strings
 
 
-def get_jobs_and_colors(jobs, color_pool):
-    return zip(jobs, cycle(color_pool))
+def prettify_gres(jobs, num_gpus_for_each_node):
+    stars = get_stars(jobs, num_gpus_for_each_node)
+    nodename_width = max(len(nodename) for nodename in stars)
+    for nodename, star_components in stars.items():
+        print(f'{nodename:<{nodename_width}}: {star_components}')
 
 
-def parse_gres(gres_string):  # 'gpu(IDX:0-1,3)' -> [0, 1, 3]
-    if gres_string.startswith('gpu'):
-        indices = gres_string[:-1].split(':')[-1]  # '0-1,3'
-        indices = indices.split(',')  # ['0-1', '3']
-        output = []
-        for idx in indices:
-            if '-' in idx:  # '0-1'
-                start, end = map(int, idx.split('-'))
-                output += list(range(start, end+1))
-            else:  # '3'
-                output += [int(idx)]
-        return output
-
-
-def print_legends(jobs, color_pool):
-    for job in jobs:
-        job['GRES_print'] = ','.join(map(str, parse_gres(job['GRES'])))
-    field_names = ['COLORS', 'USER_ID', 'JOB_ID', 'JOB_NAME', 'NODE_NAME', 'ALLOCATED_GPUS']
-    correspondences = [None, 'UserId', 'JobId', 'JobName', 'NodeList', 'GRES_print']
-    
-    fields = [{'name': field_name, 'corresponds_to': correspondence} for field_name, correspondence in zip(field_names, correspondences)]
-    fields[0]['width'] = 8
-    for field in fields[1:]:
-        field['width'] = get_col_width(jobs, field['corresponds_to'], field['name'])
+def print_legends(jobs):
+    column_names = ['COLORS', 'USER_ID', 'JOB_ID', 'JOB_NAME', 'NODE_NAME', 'ALLOCATED_GPUS']
+    keys = ['userid', 'jobid', 'jobname']
+    widths = [8] + [get_column_width(jobs, key, column_name) for key, column_name in zip(keys, column_names[1:4])]\
+        + [max(len(column_names[4]), *[len(job['resources'].keys()) for job in jobs])]\
+        + [max(len(column_names[5]), *[len(job['resources'].values()) for job in jobs])]
 
     delimiter = '  '
-    width = sum(field['width'] for field in fields) + (len(fields)-1)*len(delimiter)
+    width = sum(widths) + (len(column_names)-1) * len(delimiter)
     print(f'\n{" LEGENDS ":=^{width}}')
 
-    jobs_and_colors = get_jobs_and_colors(jobs, color_pool) 
-    header = delimiter.join([f'{field["name"]:{field["width"]}s}' for field in fields])
+    jobs_and_colors = get_jobs_and_colors(jobs)
+    indent = sum(widths[:-2]) + (len(column_names)-2) * len(delimiter)
+    header = delimiter.join([f'{column_name:{width}s}' for column_name, width in zip(column_names, widths)])
     body = '\n'.join([
         delimiter.join(
             [f'{color}********{bcolors.CEND}']
-            + [f"{job[field['corresponds_to']]:<{field['width']}}" for field in fields[1:]])
+            + [f"{job[key]:<{width}}" for key, width in zip(keys, widths[1:4])]
+            + [render_resource_string(job['resources'], indent, widths[4])])
         for job, color in jobs_and_colors
     ])
     print(header)
     print(body)
 
 
-def get_col_width(jobs, field, field_name):
-    return max([len(job[field]) for job in jobs] + [len(field_name)])
+def get_stars(jobs, num_gpus_for_each_node):
+    jobs_and_colors = get_jobs_and_colors(jobs)
+    stars = {nodename: get_gres_components(num_gpus) for nodename, num_gpus in num_gpus_for_each_node.items()}
+    for job, color in jobs_and_colors:
+        for nodename, gpu_indices in job['resources'].items():
+            for gpu_idx in gpu_indices:
+                stars[nodename][gpu_idx] = f'{color}{stars[nodename][gpu_idx]}{bcolors.CEND}'
+    stars = {nodename: ''.join(star_components) for nodename, star_components in stars.items()}
+    return stars
 
 
-def main():
-    if args.test:
-        with open('./test_scontrol.txt', 'r') as f1, open('./test_nodes.txt', 'r') as f2:
-            jobs_string = f1.read().strip().split('\n\n')
-            nodes_string = f2.read().strip().split('\n\n')
+def render_resource_string(resources, indent, nodename_width):
+    delimiter = '\n' + ' ' * indent
+    return delimiter.join([
+        f'{nodename:{nodename_width}s}  {",".join(map(str, gpu_indices))}'
+        for nodename, gpu_indices in resources.items()
+    ])
+
+
+def get_column_width(jobs, key, column_name):
+    return max(*[len(job[key]) for job in jobs], len(column_name))
+
+
+def get_gres_components(num_gpus) -> list:
+    if args.index:
+        return [f'[{str(i)}]' for i in range(num_gpus)]
     else:
-        jobs_string = os.popen('scontrol show job -d').read().strip().split('\n\n')
-        nodes_string = os.popen('scontrol show nodes').read().strip().split('\n\n')
+        return ['*'] * num_gpus
 
-    jobs = parse_scontrol(jobs_string)  # list of dicts
-    nodes = parse_scontrol(nodes_string)  # list of dicts
-    jobs = [job for job in jobs if job.get('JobState')=='RUNNING' and job.get('GRES')]  # filter RUNNING jobs
-    assert jobs, 'No Running jobs'
-    color_pool = [val for key, val in bcolors.__dict__.items() if key.startswith('C') and key!='CEND']
 
-    prettify_gres(jobs, nodes, color_pool)
-    print_legends(jobs, color_pool)
+def get_job_attrs(job_string):
+    if check_job_running_with_gres(job_string):
+        userid, = re.findall(r'UserId=(\S+)', job_string)
+        jobid, = re.findall(r'JobId=(\d+)', job_string)
+        jobname, = re.findall(r'JobName=(.*)', job_string)
+        resources = re.findall(r'\s(Nodes=.*)', job_string)  # \s: white-space-like char
+        resources = dict(sum([list(get_res_attrs(res_string).items()) for res_string in resources], []))
+        return {'userid': userid, 'jobid': jobid, 'jobname': jobname, 'resources': resources}
+
+
+def get_node_attrs(node_string):
+    nodename, = re.findall(r'NodeName=(\S+)', node_string)  # \S: non-white-space-like char
+    num_gpus, = re.findall(r'Gres=[a-zA-Z]+:(\d+)', node_string)
+    return nodename, int(num_gpus)
+
+
+def check_job_running_with_gres(job_string):
+    jobstate, = re.findall(r'JobState=([A-Z]+)', job_string)
+    return jobstate == 'RUNNING' and re.findall(r'GRES=\w+\(IDX:[-,\d]+\)', job_string)
+
+
+def get_res_attrs(res_string):  # Nodes=node1 CPU_IDs=0-31 Mem=0 GRES=gpu(IDX:4-7) -> {'node1': [4, 5, 6, 7]}
+    nodes, = re.findall(r'Nodes=(\S+)', res_string)
+    if '[' in nodes:
+        indices, = re.findall(r'\[([-,\d]+)\]', nodes)
+        indices = parse_exp(indices)
+        rootname = nodes.split('[')[0]
+        nodes = [rootname+str(idx) for idx in indices]
+    else:
+        nodes = [nodes]
+    gres, = re.findall(r'IDX:([-,\d]+)\)', res_string)
+    gres = parse_exp(gres)
+    return {nodename: gres for nodename in nodes}
+
+
+def parse_exp(exp_string):  # '0-1,3' -> [0, 1, 3]
+    exps = exp_string.split(',')  # '0-1,3' -> ['0-1', '3']
+    def expand_exp(exp):  # '0-1' -> [0, 1] or '3' -> [3]
+        if '-' in exp:
+            a, b = map(int, exp.split('-'))
+            return list(range(a, b+1))
+        else:
+            return [int(exp)]
+    return sum([expand_exp(exp) for exp in exps], [])  # concat trick
+
+
+def get_jobs_and_colors(jobs) -> zip:
+    return zip(jobs, cycle(color_pool))
 
 
 if __name__ == '__main__':
