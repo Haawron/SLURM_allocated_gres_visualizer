@@ -35,6 +35,8 @@ def main():
     job_strings, node_strings = get_strings()
     num_gpus_for_each_node = dict(get_node_attrs(node_string) for node_string in node_strings)
     jobs = [get_job_attrs(job_string) for job_string in job_strings if check_job_running_with_gres(job_string)]
+    if not jobs:
+        halt()
     prettify_gres(jobs, num_gpus_for_each_node)
     print_legends(jobs)
 
@@ -48,7 +50,15 @@ def get_strings():
         job_strings = os.popen('scontrol show job -d').read().strip().split('\n\n')
         node_strings = os.popen('scontrol show nodes').read().strip().split('\n\n')
 
+    if job_strings[0] == 'No jobs in the system':
+        halt()
+
     return job_strings, node_strings
+
+
+def halt():
+    print('No jobs in the system')
+    exit()
 
 
 def prettify_gres(jobs, num_gpus_for_each_node):
