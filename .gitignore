@@ -4,5 +4,6 @@ dist/
 deb_dist/
 *.tar.gz
 *.tar
+build/
 
 test*

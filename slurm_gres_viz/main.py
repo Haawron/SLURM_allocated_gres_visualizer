@@ -141,7 +141,7 @@ def get_node_attrs(node_string):
 
 def check_job_running_with_gres(job_string):
     jobstate, = re.findall(r'JobState=([A-Z]+)', job_string)
-    return jobstate == 'RUNNING' and re.findall(r'GRES=\w+\(IDX:[-,\d]+\)', job_string)
+    return jobstate == 'RUNNING' and re.findall(r'GRES=\S+\(IDX:[-,\d]+\)', job_string)
 
 
 def get_res_attrs(res_string):  # Nodes=node1 CPU_IDs=0-31 Mem=0 GRES=gpu(IDX:4-7) -> {'node1': [4, 5, 6, 7]}
