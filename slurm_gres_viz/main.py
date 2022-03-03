@@ -87,7 +87,10 @@ def print_legends(jobs):
         line_elems = [f'{color}********{bcolors.CEND}']
         for key, width in zip(keys, widths[1:-2]):
             if job[key] is not None:
-                line_elems += [f"{job[key]:<{width}}"]
+                if key == 'jobid' and job['arrayjobid'] is not None:
+                    line_elems += [f"{job['arrayjobid']:<{width}}"]
+                else:
+                    line_elems += [f"{job[key]:<{width}}"]
             elif width != 0:  # this job does not have the value but some others do
                 line_elems += [' ' * width]
         line_elems += [render_resource_string(job['resources'], indent, widths[-2])]
@@ -136,11 +139,12 @@ def get_job_attrs(job_string):
     if check_job_running_with_gres(job_string):
         userid, = re.findall(r'UserId=(\S+)', job_string)
         jobid, = re.findall(r'^JobId=(\d+)', job_string)  # Why ^? => not to capture ArrayJobId
+        arrayjobid, = re.findall(r'ArrayJobId=(\d+)', job_string) or (None,)
         arraytaskid, = re.findall(r'ArrayTaskId=(\d+)', job_string) or (None,)
         jobname, = re.findall(r'JobName=(.*)', job_string)
         resources = re.findall(r'\s(Nodes=.*)', job_string)  # \s: white-space-like char
         resources = dict(sum([list(get_res_attrs(res_string).items()) for res_string in resources], []))
-        return {'userid': userid, 'jobid': jobid, 'arraytaskid': arraytaskid, 'jobname': jobname, 'resources': resources}
+        return {'userid': userid, 'jobid': jobid, 'arrayjobid': arrayjobid, 'arraytaskid': arraytaskid, 'jobname': jobname, 'resources': resources}
 
 
 def get_node_attrs(node_string):
