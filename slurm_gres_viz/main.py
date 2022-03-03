@@ -69,11 +69,11 @@ def prettify_gres(jobs, num_gpus_for_each_node):
 
 
 def print_legends(jobs):
-    column_names = ['COLORS', 'USER_ID', 'JOB_ID', 'JOB_NAME', 'NODE_NAME', 'ALLOCATED_GPUS']
-    keys = ['userid', 'jobid', 'jobname']
-    widths = [8] + [get_column_width(jobs, key, column_name) for key, column_name in zip(keys, column_names[1:4])]\
-        + [max(len(column_names[4]), *[len(job['resources'].keys()) for job in jobs])]\
-        + [max(len(column_names[5]), *[len(job['resources'].values()) for job in jobs])]
+    column_names = ['COLORS', 'USER_ID', 'JOB_ID', 'ARRAY_IDX', 'JOB_NAME', 'NODE_NAME', 'ALLOCATED_GPUS']
+    keys = ['userid', 'jobid', 'arraytaskid', 'jobname']  # columns to compute the column width of each
+    widths = [8] + [get_column_width(jobs, key, column_name) for key, column_name in zip(keys, column_names[1:-2])]\
+        + [max(len(column_names[-2]), *[len(job['resources'].keys()) for job in jobs])]\
+        + [max(len(column_names[-1]), *[len(job['resources'].values()) for job in jobs])]
 
     delimiter = '  '
     width = sum(widths) + (len(column_names)-1) * len(delimiter)
@@ -81,14 +81,19 @@ def print_legends(jobs):
 
     jobs_and_colors = get_jobs_and_colors(jobs)
     indent = sum(widths[:-2]) + (len(column_names)-2) * len(delimiter)
-    header = delimiter.join([f'{column_name:{width}s}' for column_name, width in zip(column_names, widths)])
-    body = '\n'.join([
-        delimiter.join(
-            [f'{color}********{bcolors.CEND}']
-            + [f"{job[key]:<{width}}" for key, width in zip(keys, widths[1:4])]
-            + [render_resource_string(job['resources'], indent, widths[4])])
-        for job, color in jobs_and_colors
-    ])
+    header = delimiter.join([f'{column_name:{width}s}' for column_name, width in zip(column_names, widths) if width])
+    lines = []
+    for job, color in jobs_and_colors:
+        line_elems = [f'{color}********{bcolors.CEND}']
+        for key, width in zip(keys, widths[1:-2]):
+            if job[key] is not None:
+                line_elems += [f"{job[key]:<{width}}"]
+            elif width != 0:  # this job does not have the value but some others do
+                line_elems += [' ' * width]
+        line_elems += [render_resource_string(job['resources'], indent, widths[-2])]
+        line = delimiter.join(line_elems)
+        lines += [line]
+    body = '\n'.join(lines)
     print(header)
     print(body)
 
@@ -113,7 +118,11 @@ def render_resource_string(resources, indent, nodename_width):
 
 
 def get_column_width(jobs, key, column_name):
-    return max(*[len(job[key]) for job in jobs], len(column_name))
+    width_for_values = max(len(job[key] or []) for job in jobs)  # job[arraytaskid] can be None
+    if width_for_values==0:
+        return 0
+    else:
+        return max(width_for_values, len(column_name))
 
 
 def get_gres_components(num_gpus) -> list:
@@ -126,11 +135,12 @@ def get_gres_components(num_gpus) -> list:
 def get_job_attrs(job_string):
     if check_job_running_with_gres(job_string):
         userid, = re.findall(r'UserId=(\S+)', job_string)
-        jobid, = re.findall(r'JobId=(\d+)', job_string)
+        jobid, = re.findall(r'^JobId=(\d+)', job_string)  # Why ^? => not to capture ArrayJobId
+        arraytaskid, = re.findall(r'ArrayTaskId=(\d+)', job_string) or (None,)
         jobname, = re.findall(r'JobName=(.*)', job_string)
         resources = re.findall(r'\s(Nodes=.*)', job_string)  # \s: white-space-like char
         resources = dict(sum([list(get_res_attrs(res_string).items()) for res_string in resources], []))
-        return {'userid': userid, 'jobid': jobid, 'jobname': jobname, 'resources': resources}
+        return {'userid': userid, 'jobid': jobid, 'arraytaskid': arraytaskid, 'jobname': jobname, 'resources': resources}
 
 
 def get_node_attrs(node_string):
