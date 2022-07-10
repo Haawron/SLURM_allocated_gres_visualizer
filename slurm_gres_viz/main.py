@@ -1,3 +1,4 @@
+from array import array
 from itertools import cycle
 import os
 import re
@@ -34,7 +35,7 @@ color_pool = [val for key, val in bcolors.__dict__.items() if key.startswith('C'
 def main():
     job_strings, node_strings = get_strings()
     num_gpus_for_each_node = dict(get_node_attrs(node_string) for node_string in node_strings)
-    jobs = [get_job_attrs(job_string) for job_string in job_strings if check_job_running_with_gres(job_string)]
+    jobs = [get_running_job_with_gres_attrs(job_string) for job_string in job_strings if check_job_running_with_gres(job_string)]
     if not jobs:
         halt()
     prettify_gres(jobs, num_gpus_for_each_node)
@@ -135,7 +136,7 @@ def get_gres_components(num_gpus) -> list:
         return ['*'] * num_gpus
 
 
-def get_job_attrs(job_string):
+def get_running_job_with_gres_attrs(job_string):
     if check_job_running_with_gres(job_string):
         userid, = re.findall(r'UserId=(\S+)', job_string)
         jobid, = re.findall(r'^JobId=(\d+)', job_string)  # Why ^? => not to capture ArrayJobId
@@ -146,6 +147,9 @@ def get_job_attrs(job_string):
         resources = dict(sum([list(get_res_attrs(res_string).items()) for res_string in resources], []))
         return {'userid': userid, 'jobid': jobid, 'arrayjobid': arrayjobid, 'arraytaskid': arraytaskid, 'jobname': jobname, 'resources': resources}
 
+def get_parent_job_array_attrs(job_string):
+    if check_job_parent_jobarray(job_string):
+        pass
 
 def get_node_attrs(node_string):
     nodename, = re.findall(r'NodeName=(\S+)', node_string)  # \S: non-white-space-like char
@@ -156,6 +160,18 @@ def get_node_attrs(node_string):
 def check_job_running_with_gres(job_string):
     jobstate, = re.findall(r'JobState=([A-Z]+)', job_string)
     return jobstate == 'RUNNING' and re.findall(r'GRES=\S+\(IDX:[-,\d]+\)', job_string)
+
+
+def check_job_parent_jobarray(job_string):
+    jobid, = re.findall(r'^JobId=(\d+)', job_string)
+    arrayjobid, = re.findall(r'ArrayJobId=(\d+)', job_string)
+    jobstate, = re.findall(r'JobState=([A-Z]+)', job_string)
+    if arrayjobid is None \
+        or jobstate not in ['RUNNING', 'PENDING'] \
+        or jobid != arrayjobid:
+        return False
+    else:
+        return True
 
 
 def get_res_attrs(res_string):  # Nodes=node1 CPU_IDs=0-31 Mem=0 GRES=gpu(IDX:4-7) -> {'node1': [4, 5, 6, 7]}
