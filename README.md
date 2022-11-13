@@ -1,7 +1,7 @@
 # SLURM_allocated_gres_visualizer
 **The app for visualizing allocated GPUs by SLURM**
 
-![image](https://user-images.githubusercontent.com/25451196/136583132-108034a7-5088-4e46-91d7-c2c37dfd5704.png)
+![image](https://user-images.githubusercontent.com/25451196/201534640-150d5914-a453-47d2-bf98-d972a5d80337.png)
 
 When you are using Slurm and you want to check which gpus are allocated, you must have done something like
 - `ssh` to each computing node and run `nvidia-smi`. Then, repeat it.
@@ -11,28 +11,17 @@ When you are using Slurm and you want to check which gpus are allocated, you mus
 both of which are very tedious. This project can solve this.
 
 # Requirements
-## For Debianization
-This repo can be debianized with `python3-stdeb`
-```bash
-apt-get install python3-stdeb
-```
-`python3-stdeb` has some unspecified dependencies. You need to install them manually.
-```bash
-apt-get build-essential devscripts dh-python fakeroot python-all
-```
+- matplotlib
+- sty
 
 ## Slurm
 Be sure that `slurmctld`(master) and `slurmd`(nodes) are active so that there are no problems for running `scontrol show nodes` or `scontrol show job`.
 
 # Installation
 ```bash
-# Debianize
 git clone https://github.com/Haawron/SLURM_allocated_gres_visualizer.git
 cd SLURM_allocated_gres_visualizer
-python3 setup.py --command-packages=stdeb.command bdist_deb  # be sure to be without conda
-
-# Install
-dpkg -i deb_dist/python3-slurm-gres-viz_1.0-1_all.deb
+/usr/bin/python3 setup.py install  # be sure to be without conda
 ```
 
 # Usage
