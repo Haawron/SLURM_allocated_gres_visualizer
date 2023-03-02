@@ -3,6 +3,7 @@ import os
 import re
 import matplotlib.pyplot as plt
 from sty import fg
+import pprint
 if __name__ == '__main__':  # for test
     from args import args
 else:
