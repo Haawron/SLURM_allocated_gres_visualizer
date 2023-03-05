@@ -16,11 +16,12 @@ def parse_jobstring(job_string:str):
 
 def parse_nodestring(node_string:str):
     nodename, = re.findall(r'NodeName=(\S+)', node_string)  # \S: non-white-space-like char
-    num_cpus, = re.findall(r'CPUTot=(\d+)', node_string)
-    num_gpus, = re.findall(r'Gres=[a-zA-Z]+:(\d+)', node_string)
-    mem_used, = re.findall(r'AllocMem=(\d+)', node_string)
+    num_cpus_alloc, = re.findall(r'CPUAlloc=(\d+)', node_string)
+    num_cpus_total, = re.findall(r'CPUTot=(\d+)', node_string)
+    num_gpus_total, = re.findall(r'Gres=[a-zA-Z]+:(\d+)', node_string)
+    mem_alloc, = re.findall(r'AllocMem=(\d+)', node_string)
     mem_total, = re.findall(r'RealMemory=(\d+)', node_string)
-    return nodename, num_cpus, num_gpus, mem_used, mem_total
+    return nodename, int(num_cpus_alloc), int(num_cpus_total), int(num_gpus_total), MiB2GiB(float(mem_alloc)), MiB2GiB(float(mem_total))
 
 
 def job_tres_string_to_dict(job_tres_string:str) -> Dict[str,List[Union[int,List[int],float]]]:
@@ -45,7 +46,7 @@ def job_tres_string_to_dict(job_tres_string:str) -> Dict[str,List[Union[int,List
     gpu_indices, = re.findall(r'IDX:([-,\d]+)\)', job_tres_string) or ['']
     cpu_indices = resolve_expr(cpu_indices)
     gpu_indices = resolve_expr(gpu_indices)
-    mem, = map(int, re.findall(r'Mem=(\d+)', job_tres_string))
+    mem, = map(MiB2GiB, map(int, re.findall(r'Mem=(\d+)', job_tres_string)))
     job_tres_dict = {
         nodename: {'cpus': cpu_indices, 'gpus': gpu_indices, 'mem': mem}
         for nodename in nodenames
@@ -63,3 +64,7 @@ def resolve_expr(expr_string) -> List[int]:
         return list(map(int, indices))
     else:
         return []
+
+
+def MiB2GiB(MiB:int) -> float:
+    return MiB / 1024

@@ -1,0 +1,199 @@
+from typing import List, Dict, Tuple
+import os
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sty import fg, ef
+
+if __name__.startswith('slurm_gres_viz'):
+    from .slurm_objects import Node, Job, GPU
+    from .args import args
+else:
+    from slurm_objects import Node, Job, GPU
+    from args import args
+from pprint import pprint
+
+
+cmap = plt.get_cmap('jet')
+
+
+class Displayer:
+    def __init__(self, nodes:List[Node], jobs:List[Job]):
+        self.dashboard = DashBoard(nodes, jobs)
+        self.legend = Legend(jobs)
+
+    def show(self):
+        self.dashboard.show()
+        self.legend.show()
+
+
+class DashBoard:  # Upper body
+    def __init__(self, nodes:List[Node], jobs:List[Job]):
+        self.nodes = nodes
+        self.jobs = jobs
+        self.max_num_gpus = max(map(lambda node: node.num_gpus_total, self.nodes))
+        self.delimiter_within_gpu = '|'
+        if args.index and not args.full and not args.gpu_memory and not args.gpu_util:
+            self.delimiter_between_gpu = ''
+        else:
+            self.delimiter_between_gpu = ' '
+        self.all_gpu_items = self.build_items()
+        self.all_gpu_items = self.colorize_items(self.all_gpu_items)
+        self.widths = self.calculate_widths()
+
+    def show(self):
+        lines = [
+            f'{node.name:{self.widths["nodename"]}}: '
+            f'[GPU]  {self.delimiter_between_gpu.join(gpu_items)}      '
+            f'[CPU]  {node.num_cpus_alloc:>{self.widths["cpu"]}}/{node.num_cpus_total:{self.widths["cpu"]}}  '
+            f'[MEM]  {node.mem_alloc:>{self.widths["mem"]-3}.0f}/{node.mem_total:{self.widths["mem"]}.2f} GiB'
+            for node, gpu_items in zip(self.nodes, self.all_gpu_items.values())
+        ]
+        body = '\n'.join(lines)
+        print(body)
+
+    def build_items(self):
+        all_gpu_items:Dict[str,List[str]] = {}
+        for node in self.nodes:
+            gpu_items:List[str] = []
+            for i in range(self.max_num_gpus):
+                if i >= node.num_gpus_total:  # pseudo item to align, as colorizer's width varies aligning with width does not work
+                    gpu_items.append(' '*len(gpu_item))
+                else:
+                    gpu_item = []
+                    if args.full or args.index:
+                        gpu_item.append(f'{i}')
+                    if args.full or args.gpu_memory:
+                        gpu_item.append(f'{node.gpus[i].vram_alloc:>4.1f}/{node.gpus[i].vram_total:4.1f}GiB')
+                    if args.full or args.gpu_util:
+                        util = int(round(node.gpus[i].util, 0))
+                        gpu_item.append(f'{util:>2d}%' if util < 100 else '100')
+                    gpu_item = ('[' + self.delimiter_within_gpu.join(gpu_item) + ']') if gpu_item else '*'
+                    gpu_items.append(gpu_item)
+            all_gpu_items[node.name] = gpu_items
+        return all_gpu_items
+
+    def colorize_items(self, all_gpu_items):
+        if args.only_mine:
+            all_mine_masks = {node.name: [False]*self.max_num_gpus for node in self.nodes}
+            for job in self.jobs:
+                is_mine = os.environ['USER'] in job.userid
+                if is_mine:
+                    for nodename, tres_dict in job.tres_dict.items():
+                        for gpu_idx in tres_dict['gpus']:
+                            all_mine_masks[nodename][gpu_idx] = True
+            for nodename, mine_masks in all_mine_masks.items():
+                for gpu_idx, is_mine in enumerate(mine_masks):
+                    if not is_mine:
+                        all_gpu_items[nodename][gpu_idx] = ' ' * len(all_gpu_items[nodename][gpu_idx])
+
+        all_stylized_masks = {node.name: [False]*self.max_num_gpus for node in self.nodes}
+        for job in self.jobs:
+            color = get_color_from_idx(int(job.id))
+            is_mine = os.environ['USER'] in job.userid
+            for nodename, tres_dict in job.tres_dict.items():
+                for gpu_idx in tres_dict['gpus']:
+                    all_gpu_items[nodename][gpu_idx] = stylize(all_gpu_items[nodename][gpu_idx], color, is_mine)
+                    all_stylized_masks[nodename][gpu_idx] = True
+
+        gray = tuple(100 for _ in range(3))
+        for nodename, stylized_masks in all_stylized_masks.items():
+            for gpu_idx, stylized in enumerate(stylized_masks):
+                if not stylized:  # idle GPUs
+                    all_gpu_items[nodename][gpu_idx] = stylize(all_gpu_items[nodename][gpu_idx], gray)
+        return all_gpu_items
+
+    def calculate_widths(self):
+        widths = {
+            'nodename': max(map(lambda node: len(node.name), self.nodes)),
+            'cpu': max(map(lambda node: np.log10(node.num_cpus_total).astype(int)+1, self.nodes)),
+            'mem': 6
+            # why don't we have gpu items' width?
+            # => as colorizer's width varies aligning with width does not work
+        }
+        return widths
+
+
+class Legend:  # Lower body
+    def __init__(self, jobs:List[Job]):
+        self.jobs = jobs
+        self.space_placeholder = '#'  # not to be splitted by str.split
+        self.delimiter_column = '   '
+
+        self.default_colnames = ['colors', 'user_id', 'job_id', 'job_arr_id', 'job_arr_task_id', 'job_name', 'node_name', 'gpus', 'cpus', 'mem']
+        self.default_display_colnames = [colname.replace('job_arr_task_id', 'arr_idx').upper() for colname in self.default_colnames if colname != 'job_arr_id']
+        self.default_aligns = pd.Series(['<', '<', '>', '<', '<', '<', '^', '^', '>', '>'], self.default_colnames)
+
+        self.df, self.display_colnames, self.aligns = self.build_df()
+        self.widths = self.calculate_widths(self.df, self.display_colnames)
+
+    def show(self):
+        df_s = self.df.to_string(max_colwidth=0, index=False)
+        lines = [line.split() for line in df_s.split('\n')]
+        lines[0] = self.display_colnames
+        s = []
+        for line in lines:
+            ss = []
+            for elem, colname in zip(line, self.df.columns):
+                ss.append(f'{elem:{self.aligns[colname]}{self.widths[colname]}}'.replace(self.space_placeholder, ' '))
+            ss = self.delimiter_column.join(ss)
+            s.append(ss)
+        whole_width = self.widths.sum() + (self.widths.shape[0]-1)*len(self.delimiter_column)
+        print()
+        print(f'{" LEGEND ":=^{whole_width}}')
+        print('\n'.join(s))
+
+    def build_df(self):
+        records = self.build_records_from_jobs(self.jobs)
+        df = pd.DataFrame.from_records(records, columns=self.default_colnames[1:])
+        df['job_id'] = df['job_arr_id'].fillna(df['job_id'])  # firstly with job_arr_id, and overwrite with job_id only for none rows
+        del df['job_arr_id']
+        df['gpus'] = df['gpus'].replace('', pd.NA).fillna('-')
+        df['mem'] = df['mem'].astype(str) + f'{self.space_placeholder}GiB'
+        # inserting the color legend
+        color_legend = df['job_id'].map(lambda jid: stylize('********', get_color_from_idx(int(jid))))
+        df.insert(0, 'colors', color_legend)
+        # masking multi-node jobs
+        duplicates = df.duplicated(subset=['job_id', 'job_arr_task_id'], keep='first')
+        df.loc[duplicates, ['colors', 'user_id', 'job_id', 'job_arr_task_id', 'job_name']] = self.space_placeholder
+
+        no_arr_job = df['job_arr_task_id'].replace(self.space_placeholder, pd.NA).isna().all()
+        display_colnames = self.default_display_colnames.copy()
+        aligns = self.default_aligns.copy()
+        if no_arr_job:
+            del df['job_arr_task_id']
+            del aligns['job_arr_task_id']
+            display_colnames.remove('ARR_IDX')
+
+        return df, display_colnames, aligns
+
+    def build_records_from_jobs(self, jobs):
+        records = []
+        for job in jobs:
+            for nodename, tres_dict in job.tres_dict.items():
+                record = [
+                    job.userid, job.id, job.arrayjobid, job.arraytaskid, job.name, nodename,
+                    ','.join(map(str, tres_dict['gpus'])), len(tres_dict['cpus']), int(tres_dict['mem'])
+                ]
+                records.append(record)
+        return records
+
+    def calculate_widths(self, df, display_colnames):
+        tmp_df_for_calculating_width = pd.concat([df.astype(str), pd.DataFrame([display_colnames], columns=df.columns)], ignore_index=True)
+        widths = tmp_df_for_calculating_width.applymap(lambda elem: len(str(elem))).max()
+        widths['colors'] = 8
+        return widths
+
+
+def get_color_from_idx(idx:int):
+    color = cmap(((11*idx) % 256) / 256)[:-1]  # RGB
+    color = list(map(lambda x: int(x*255), color))
+    return color
+
+
+def stylize(source:str, color:List[int], bold:bool=False):
+    output = fg(*color) + source + fg.rs
+    if bold:
+        output = ef.b + output + ef.rs
+    return output

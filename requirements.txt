@@ -1,3 +1,5 @@
 matplotlib
 sty
 prometheus-client
+requests
+pandas
