@@ -18,6 +18,7 @@ both of which are very tedious. This project can solve this.
 - prometheus-client
 - requests
 - pandas
+- bs4
 
 ## Slurm
 - Be sure that `slurmctld`(master) and `slurmd`(nodes) are active so that there are no problems for running `scontrol show nodes` or `scontrol show job`.
