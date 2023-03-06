@@ -3,3 +3,4 @@ sty
 prometheus-client
 requests
 pandas
+bs4
