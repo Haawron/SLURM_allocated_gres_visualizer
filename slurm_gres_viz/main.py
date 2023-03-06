@@ -78,7 +78,7 @@ def get_ips_from_etchosts() -> Dict[str,str]:
     with open('/etc/hosts') as f:
         data = f.read()
     ip_pattern = r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
-    ip_node_pairs:List[Tuple[str,str]] = re.findall(ip_pattern + r'\s*(\w*)', data)  # [(ip, nodename), ...]
+    ip_node_pairs:List[Tuple[str,str]] = re.findall(ip_pattern + r'\s*([\w-]*)', data)  # [(ip, nodename), ...]
     ip_node_pairs = list(map(lambda tuple: tuple[::-1], ip_node_pairs))  # [(nodename, ip), ...]
     return dict(ip_node_pairs)
 
