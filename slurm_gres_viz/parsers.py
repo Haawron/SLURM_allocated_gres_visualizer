@@ -19,7 +19,7 @@ def parse_jobstring(job_string:str):
 
 def parse_nodestring(node_string:str):
     nodename, = re.findall(r'NodeName=(\S+)', node_string)  # \S: non-white-space-like char
-    state, = re.findall(r'State=(\w+)', node_string)
+    state, = re.findall(r'State=([\w\+]+)', node_string)
     num_cpus_alloc, = re.findall(r'CPUAlloc=(\d+)', node_string)
     num_cpus_total, = re.findall(r'CPUTot=(\d+)', node_string)
     num_gpus_alloc, = re.findall(r'AllocTRES=.*gres/gpu=(\d)', node_string) or [0]

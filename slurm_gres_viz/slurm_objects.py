@@ -9,6 +9,7 @@ else:  # for test
 
 
 NORMAL_NODE_STATES = ['IDLE', 'MIXED', 'ALLOCATED']
+INVALID_NODE_STATES = ['DRAIN', 'DOWN', 'INVALID']
 
 
 class Job:
@@ -18,11 +19,18 @@ class Job:
 
 
 class GPU:
-    def __init__(self, dcgm_stat:Dict[str,float]):
+    def __init__(self, dcgm_stat:Union[Dict[str,float],None]=None):
         # self.gpuname = gpuname  # TODO: gpu name from slurm.conf??
-        self.util = float(dcgm_stat['DCGM_FI_DEV_GPU_UTIL'])
-        self.vram_alloc = MiB2GiB(float(dcgm_stat['DCGM_FI_DEV_FB_USED']))
-        self.vram_total = MiB2GiB(float(dcgm_stat['DCGM_FI_DEV_FB_FREE'])) + self.vram_alloc
+        if dcgm_stat is None or 'DCGM_FI_DEV_GPU_UTIL' not in dcgm_stat:
+            self.util = 0
+            self.vram_alloc = 0
+            self.vram_total = 0
+            self.invalid = True
+        else:
+            self.util = float(dcgm_stat['DCGM_FI_DEV_GPU_UTIL'])
+            self.vram_alloc = MiB2GiB(float(dcgm_stat['DCGM_FI_DEV_FB_USED']))
+            self.vram_total = MiB2GiB(float(dcgm_stat['DCGM_FI_DEV_FB_FREE'])) + self.vram_alloc
+            self.invalid = False
 
 
 class Node:
@@ -41,8 +49,8 @@ class Node:
         self.node_string = node_string
         nodename, state, num_cpus_alloc, num_cpus_total, num_gpus_alloc, num_gpus_total, mem_alloc, mem_total = parse_nodestring(self.node_string)
         self.name = nodename  # node_string[v], exporter
-        self.state = state
-        self.is_state_ok = self.state in NORMAL_NODE_STATES
+        self.states:List[str] = state.split('+')  # ex: IDLE+DRAIN
+        self.is_state_ok = all([invalid_state not in self.states for invalid_state in INVALID_NODE_STATES])
         self.mem_alloc = mem_alloc  # node_string[v], exporter
         self.mem_total = mem_total  # node_string
 
@@ -56,10 +64,15 @@ class Node:
         # todo: show 옵션을 받아오고, node가 정상인 상태에서만 가져와야 됨
 
         self.request_exporter = request_exporter
-        if self.request_exporter and self.is_state_ok:
-            self.public_ip = node_ip_dict[self.name]  # given
-            # self.node_metrics = self.get_node_metrics()
-            self.gpu_metrics, self.gpus = self.get_gpu_metrics()
+        if self.request_exporter:
+            if self.is_state_ok:
+                self.public_ip = node_ip_dict[self.name]  # given
+                # self.node_metrics = self.get_node_metrics()
+                self.gpu_metrics, self.gpus = self.get_gpu_metrics()
+                if any([gpu.invalid for gpu in self.gpus]):
+                    self.is_state_ok = False
+            else:
+                self.gpus = [GPU() for _ in range(self.num_gpus_total)]
             # self.cpu_loads = [
             #     self.node_metrics['node_load1'].samples[0].value,
             #     self.node_metrics['node_load5'].samples[0].value,
@@ -75,7 +88,7 @@ class Node:
     #         raise  # The metric server does not respond
 
     def get_gpu_metrics(self) -> Tuple[dict, List[GPU]]:
-        response = requests.get(f'http://{self.public_ip}:9400/metrics')  # dcgm exporter
+        response = requests.get(f'http://{self.public_ip}:9400/metrics', timeout=.1)  # dcgm exporter
         if response.ok:
             gpu_metrics = self.html2metrics(response.text)
             gpus = self.metrics2gpu_objs(gpu_metrics)

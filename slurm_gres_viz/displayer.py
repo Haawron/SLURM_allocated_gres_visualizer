@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sty import fg, ef
+from sty import fg, ef, bg
 
 if __name__.startswith('slurm_gres_viz'):
     from .slurm_objects import Node, Job, GPU
@@ -16,6 +16,8 @@ from pprint import pprint
 
 
 cmap = plt.get_cmap('jet')
+RED = (255, 50, 0)
+YELLOW = (200, 200, 0)
 
 
 class Displayer:
@@ -116,16 +118,28 @@ class DashBoard:  # Upper body
                 for gpu_idx in tres_dict['gpus']:
                     will_be_hidden = self.show_only_mine and not is_mine
                     if not will_be_hidden:
-                        all_gpu_items[nodename][gpu_idx] = stylize(all_gpu_items[nodename][gpu_idx], color, is_mine)
+                        content = colorize(all_gpu_items[nodename][gpu_idx], color)
+                        if is_mine:
+                            content = make_bold(content)
+                        all_gpu_items[nodename][gpu_idx] = content
 
         # not occupied -> colored into gray
         gray = tuple(100 for _ in range(3))
         for nodename, occupancy_masks in self.all_occupancy_masks.items():
             for gpu_idx, is_occupied in enumerate(occupancy_masks):
                 if not is_occupied:  # idle GPUs
-                    all_gpu_items[nodename][gpu_idx] = stylize(all_gpu_items[nodename][gpu_idx], gray)
+                    all_gpu_items[nodename][gpu_idx] = colorize(all_gpu_items[nodename][gpu_idx], gray)
 
         # TODO: 비정상(not in IDLE, MIXED, ALLOCATED) 노드 취소선
+        for node in self.nodes:
+            if any([invalid_state in node.states for invalid_state in ['DOWN', 'INVALID']]):
+                for gpu_idx in range(node.num_gpus_total):
+                    all_gpu_items[node.name][gpu_idx] = colorize(all_gpu_items[node.name][gpu_idx], RED, True)
+            elif 'DRAIN' in node.states:
+                for gpu_idx in range(node.num_gpus_total):
+                    all_gpu_items[node.name][gpu_idx] = colorize(all_gpu_items[node.name][gpu_idx], YELLOW, True)
+            else:  # valid node
+                pass
         return all_gpu_items
 
     def calculate_widths(self):
@@ -204,7 +218,7 @@ class Legend:  # Lower body
         df = pd.DataFrame.from_records(records, columns=self.default_colnames[1:])
         if self.show_only_mine:
             df = df[df['user_id'].str.contains(os.environ['USER'])]
-        color_legend = df['job_id'].map(lambda jid: stylize('********', get_color_from_idx(int(jid))))  # before the column job_id overwritten
+        color_legend = df['job_id'].map(lambda jid: colorize('********', get_color_from_idx(int(jid))))  # before the column job_id overwritten
         df['job_id'] = df['job_arr_id'].fillna(df['job_id'])  # firstly with job_arr_id, and overwrite with job_id only for none rows
         del df['job_arr_id']
         df['gpus'] = df['gpus'].replace('', pd.NA).fillna('-')
@@ -251,8 +265,14 @@ def get_color_from_idx(idx:int):
     return color
 
 
-def stylize(source:str, color:List[int], bold:bool=False):
-    output = fg(*color) + source + fg.rs
-    if bold:
-        output = ef.b + output + ef.rs
+def colorize(source:str, color:List[int], background:bool=False):
+    if not background:
+        output = fg(*color) + source + fg.rs
+    else:
+        output = bg(*color) + source + bg.rs
+    return output
+
+
+def make_bold(source:str):
+    output = ef.b + source + ef.rs
     return output
