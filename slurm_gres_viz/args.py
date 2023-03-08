@@ -23,10 +23,13 @@ parser.add_argument('-gm', '--gpu-memory', action='store_true',
                     help='asd')
 parser.add_argument('-gu', '--gpu-util', action='store_true',
                     help='asd')
+
 # iterate
 parser.add_argument('-l', '--loop', type=rate_in_range, default=-1,
                     help='asd')
+
 # test
-parser.add_argument('-t', '--test', action='store_true',
+parser.add_argument('-t', '--test-from-log', action='store_true',
                     help='Test mode')
+
 args = parser.parse_args()

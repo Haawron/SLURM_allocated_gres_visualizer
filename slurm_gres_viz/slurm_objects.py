@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 import requests
 from bs4 import BeautifulSoup
 from prometheus_client.parser import text_string_to_metric_families
@@ -6,6 +6,9 @@ if __name__.startswith('slurm_gres_viz'):
     from .parsers import parse_jobstring, parse_nodestring, MiB2GiB
 else:  # for test
     from parsers import parse_jobstring, parse_nodestring, MiB2GiB
+
+
+NORMAL_NODE_STATES = ['IDLE', 'MIXED', 'ALLOCATED']
 
 
 class Job:
@@ -23,7 +26,7 @@ class GPU:
 
 
 class Node:
-    def __init__(self, node_string:str, node_ip_dict:Dict[str,str]):
+    def __init__(self, node_string:str, node_ip_dict:Union[Dict[str,str],None], request_exporter:bool=False):
         """# Vars (example)
         @nodename: `"vll3"`
         @num_cpus: `96`
@@ -34,31 +37,42 @@ class Node:
         @cpu_load: `2.10`
         @mem_used: `61440`
         """
+        # getting infos from node_string (fast)
         self.node_string = node_string
-        nodename, num_cpus_alloc, num_cpus_total, num_gpus_total, mem_alloc, mem_total = parse_nodestring(self.node_string)
-        self.name = nodename  # already have, exporter
-        self.public_ip = node_ip_dict[self.name]  # given
-        self.node_metrics = self.get_node_metrics()
-        self.gpu_metrics, self.gpus = self.get_gpu_metrics()
-
-        self.num_cpus_total = num_cpus_total  # node_string
-        self.num_cpus_alloc = num_cpus_alloc  # node_string
-        self.num_gpus_total = num_gpus_total  # node_string
-        self.cpu_loads = [
-            self.node_metrics['node_load1'].samples[0].value,
-            self.node_metrics['node_load5'].samples[0].value,
-            self.node_metrics['node_load15'].samples[0].value,
-        ]  # node_string, exporter[v]
+        nodename, state, num_cpus_alloc, num_cpus_total, num_gpus_alloc, num_gpus_total, mem_alloc, mem_total = parse_nodestring(self.node_string)
+        self.name = nodename  # node_string[v], exporter
+        self.state = state
+        self.is_state_ok = self.state in NORMAL_NODE_STATES
         self.mem_alloc = mem_alloc  # node_string[v], exporter
         self.mem_total = mem_total  # node_string
 
-    def get_node_metrics(self) -> dict:
-        response = requests.get(f'http://{self.public_ip}:9100/metrics')  # node exporter
-        if response.ok:
-            metrics = self.html2metrics(response.text)
-            return {metric.name: metric for metric in metrics}
-        else:
-            raise  # The metric server does not respond
+        self.num_cpus_total = num_cpus_total  # node_string
+        self.num_cpus_alloc = num_cpus_alloc  # node_string
+        self.num_gpus_alloc = num_gpus_alloc  # node_string
+        self.num_gpus_total = num_gpus_total  # node_string
+
+        # ==========================================================
+        # getting infos from exporters (slow)
+        # todo: show 옵션을 받아오고, node가 정상인 상태에서만 가져와야 됨
+
+        self.request_exporter = request_exporter
+        if self.request_exporter and self.is_state_ok:
+            self.public_ip = node_ip_dict[self.name]  # given
+            # self.node_metrics = self.get_node_metrics()
+            self.gpu_metrics, self.gpus = self.get_gpu_metrics()
+            # self.cpu_loads = [
+            #     self.node_metrics['node_load1'].samples[0].value,
+            #     self.node_metrics['node_load5'].samples[0].value,
+            #     self.node_metrics['node_load15'].samples[0].value,
+            # ]  # node_string, exporter[v]
+
+    # def get_node_metrics(self) -> dict:
+    #     response = requests.get(f'http://{self.public_ip}:9100/metrics')  # node exporter
+    #     if response.ok:
+    #         metrics = self.html2metrics(response.text)
+    #         return {metric.name: metric for metric in metrics}
+    #     else:
+    #         raise  # The metric server does not respond
 
     def get_gpu_metrics(self) -> Tuple[dict, List[GPU]]:
         response = requests.get(f'http://{self.public_ip}:9400/metrics')  # dcgm exporter
