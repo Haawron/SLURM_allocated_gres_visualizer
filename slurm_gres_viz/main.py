@@ -1,107 +1,66 @@
-from typing import List, Dict, Union, Tuple
 import os
-import re
 import time
 
 from pathlib import Path
-from multiprocessing.pool import ThreadPool
-
-import matplotlib.pyplot as plt
 
 if __name__ == '__main__':  # for test
     from args import args
-    from slurm_objects import Job, GPU, Node
-    from displayer import Displayer
+    from visualizer import SlurmTresVisualizer
 else:  # slurm_gres_viz.main
     from .args import args
-    from .slurm_objects import Job, GPU, Node
-    from .displayer import Displayer
+    from .visualizer import SlurmTresVisualizer
 
-
-cmap = plt.get_cmap('jet')
 
 # TODO: GPU 정보 받아오는 건 GPU 옵션 받았을 때만 해야 함
-# TODO: GPU index 마다의 util 보여줘야 함
-# TODO: 반복해서 출력해야 함
+# TODO: 했는데도 느려서 프로파일링 해야 함
 
 
-class SlurmTresVisualizer:
-    def __init__(self, node_strings:List[str], job_strings:List[str]):
-        self.node_strings = node_strings
-        self.job_strings = job_strings
-
-        self.nodes, self.jobs = self.get_infos()
-        if args.test:
-            for job in self.jobs:
-                print(job.userid, job.id, job.name)
-                print(job.tres_dict)
-            print()
-        self.show()
-
-    # =================================================================================================
-
-    def get_infos(self):
-        nodes = self.get_node_infos_from_node_strings()
-        jobs = self.get_job_infos_from_job_strings()
-        return nodes, jobs
-
-    def get_node_infos_from_node_strings(self):
-        node_ip_dict = get_ips_from_etchosts()
-        def get_node(node_string):
-            return Node(node_string=node_string, node_ip_dict=node_ip_dict)
-        with ThreadPool(len(self.node_strings)) as t:
-            nodes = t.map(get_node, self.node_strings)
-        return nodes
-
-    def get_job_infos_from_job_strings(self):
-        job_infos:List[Job] = []
-        for job_string in self.job_strings:
-            jobstate, = re.findall(r'JobState=([A-Z]+)', job_string)
-            if jobstate == 'RUNNING':
-                job_infos.append(Job(job_string))
-        return job_infos
-
-    # =================================================================================================
-
-    def show(self):
-        displayer = Displayer(self.nodes, self.jobs)
-        displayer.show()
+def get_display_options():
+    display_options = {
+        'show_index': args.full or args.index,
+        'show_gpu_memory': args.full or args.gpu_memory,
+        'show_gpu_util': args.full or args.gpu_util,
+        'show_only_mine': args.only_mine,
+    }
+    return display_options
 
 
-# =================================================================================================
-# =================================================================================================
+def looper(func):  # decorator
+    def wrapper(**display_options):
+        if args.loop < 0:
+            func(**display_options)
+        else:
+            while True:
+                func(**display_options)
+                print('\n\n')
+                time.sleep(args.loop)
+    return wrapper
 
-# static methods
 
-
-def get_ips_from_etchosts() -> Dict[str,str]:
-    with open('/etc/hosts') as f:
-        data = f.read()
-    ip_pattern = r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
-    ip_node_pairs:List[Tuple[str,str]] = re.findall(ip_pattern + r'\s*([\w-]*)', data)  # [(ip, nodename), ...]
-    ip_node_pairs = list(map(lambda tuple: tuple[::-1], ip_node_pairs))  # [(nodename, ip), ...]
-    return dict(ip_node_pairs)
+@looper
+def run(**display_options):
+    strings = {
+        'node_strings': os.popen('scontrol show nodes').read().strip().split('\n\n'),
+        'job_strings': os.popen('scontrol show job -d -a').read().strip().split('\n\n'),
+    }
+    viz = SlurmTresVisualizer(**strings, **display_options)
+    viz.show()
 
 
 def main():
-    def wrapper():
-        strings = {
-            'node_strings': os.popen('scontrol show nodes').read().strip().split('\n\n'),
-            'job_strings': os.popen('scontrol show job -d -a').read().strip().split('\n\n'),
-        }
-        SlurmTresVisualizer(**strings)
-
-    if args.loop < 0:
-        wrapper()
-    else:
-        while True:
-            wrapper()
-            print('\n\n')
-            time.sleep(args.loop)
+    display_options = get_display_options()
+    run(**display_options)
 
 
-if __name__ == '__main__':
-    if args.test:
+def forced_main():
+    display_options = get_display_options()
+    if 'admin' not in os.environ['USER']:
+        display_options['show_only_mine'] = True
+    run(**display_options)
+
+
+if __name__ == '__main__':  # testing
+    if args.test_from_log:
         strings = {}
         for p_case_dir in Path('test/logs').glob('**/*'):
             for obj in ['node', 'job']:
@@ -116,4 +75,13 @@ if __name__ == '__main__':
                 SlurmTresVisualizer(**strings)
                 print()
     else:
-        main()
+        from cProfile import Profile
+        from pstats import Stats
+        profiler = Profile()
+        profiler.runcall(main)
+        stats = Stats(profiler)
+        stats.strip_dirs()
+        stats.sort_stats('tottime')
+        stats.print_stats(20)
+        stats.sort_stats('cumulative')
+        stats.print_stats(20)
