@@ -8,7 +8,7 @@ required_packages = [str(package.__dict__.get('req', package.__dict__['requireme
 
 setup(
     name="slurm_gres_viz",
-    version="2.1.0",
+    version="2.1.1",
     author="Hyogun Lee(Haawron)",
     author_email="gunsbrother@khu.ac.kr",
     python_requires='>=3.6',

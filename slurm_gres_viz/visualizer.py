@@ -55,9 +55,14 @@ class SlurmTresVisualizer:
     def get_job_infos(self):
         job_infos:List[Job] = []
         for job_string in self.job_strings:
-            jobstate, = re.findall(r'JobState=([A-Z]+)', job_string)
-            if jobstate == 'RUNNING':
-                job_infos.append(Job(job_string))
+            if job_string == 'No jobs in the system':
+                job_infos = []
+                break
+            else:
+                jobstate, = re.findall(r'JobState=([A-Z]+)', job_string)
+                if jobstate == 'RUNNING':
+                    job_info = Job(job_string)
+                    job_infos.append(job_info)
         return job_infos
 
     # =================================================================================================
