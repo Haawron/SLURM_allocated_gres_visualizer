@@ -79,7 +79,10 @@ def resolve_hostname_expr(expr:str) -> List[str]:
     @return: `["debug-g1", "debug-g3", "debug-g4", "batch1", "batch2"]`
     """
     # TODO: csv랑 re랑 비교
-    splitted_host_ranges, = list(csv.reader([expr], delimiter=',', quotechar='[', quoting=csv.QUOTE_MINIMAL))
+    # (?!...): negative lookahead assertion, matched only when ... does not follow
+    # [^\[]*\]: ...]
+    # ==> `,...]` will be ignored
+    splitted_host_ranges = re.split(r',(?![^\[]*\])', expr)
     all_hostnames = []
     for splitted_host_range in splitted_host_ranges:
         m = re.match(r'(?P<hostname_root>[\w-]+)(\[(?P<range>[\d,-]+)\])?', splitted_host_range)
