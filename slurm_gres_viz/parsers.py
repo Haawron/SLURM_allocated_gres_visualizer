@@ -147,23 +147,22 @@ def filter_string_parser(filter_string:str) -> Dict[str, List[str]]:
     Dict[str:List[str]]
         e.g. {"jobname": ["foo"], "jobid": ["1", "2", "3", "4"], "userid": ["bar"]}
     """
-    available_keys = ['job_id', 'user_id', 'job_name', 'node', 'arrayjobid', 'arraytaskid']
+    available_keys = ['job_id', 'user_id', 'job_name', 'node_name', 'arrayjobid', 'arraytaskid']
     abbreviation_keys = ['id', 'uid', 'n', 'w']
     try:
         filter_dict = {}
-        filter_string = filter_string.split(' ')
-
-        for filter_string in filter_string:
-            key, value = filter_string.split('=')
+        for f_string in filter_string:
+            key, value = f_string.split('=')
             value = value.strip('{}')
             if key in abbreviation_keys:
                 key = available_keys[abbreviation_keys.index(key)]
             if key not in available_keys:
-                raise
+                raise Exception(f'Cannot recognize the filter key: {key}')
             if '-' in value:
-                value = resolve_index_expr(value[1])
-            filter_dict[key] = value
+                value = [str(v) for v in resolve_index_expr(value)]
+            filter_dict[key] = value if isinstance(value, list) else [value]
         return filter_dict
-    except:
+    except Exception as e:
+        print(e)
         print('Filter string is not valid. Please check the format.')
         return {}

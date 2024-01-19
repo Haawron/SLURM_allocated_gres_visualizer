@@ -1,5 +1,6 @@
 import re
 from typing import List, Tuple, Dict
+from parsers import filter_string_parser
 from multiprocessing.pool import ThreadPool
 
 if __name__.startswith('slurm_gres_viz'):  # for test
@@ -81,7 +82,7 @@ class SlurmTresVisualizer:
             show_gpu_memory=self.show_gpu_memory,
             show_gpu_util=self.show_gpu_util,
             show_only_mine=self.show_only_mine,
-            filter_string=self.filter_string
+            filter_dict=filter_string_parser(self.filter_string)
         )
         displayer.show()
 

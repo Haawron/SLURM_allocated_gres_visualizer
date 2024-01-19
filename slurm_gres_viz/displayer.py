@@ -82,7 +82,7 @@ class DashBoard:  # Upper body
                 is_mine = mine_masks[gpu_idx]
                 is_filtered = filter_masks[gpu_idx]
                 is_occupied = occupancy_masks[gpu_idx]
-                will_be_hidden = self.show_only_mine and not is_mine or is_filtered
+                will_be_hidden = (self.show_only_mine and not is_mine) or is_filtered
                 if gpu_idx >= node.num_gpus_total:  # pseudo item to align, as colorizer's width varies aligning with width does not work
                     gpu_items.append(' '*len(gpu_item))
                 else:
@@ -120,7 +120,8 @@ class DashBoard:  # Upper body
             is_mine = os.environ['USER'] in job.userid
             for nodename, tres_dict in job.tres_dict.items():
                 for gpu_idx in tres_dict['gpus']:
-                    will_be_hidden = self.show_only_mine and not is_mine
+                    is_filtered = self.all_filter_masks[nodename][gpu_idx]
+                    will_be_hidden = (self.show_only_mine and not is_mine) or is_filtered
                     if not will_be_hidden:
                         content = colorize(all_gpu_items[nodename][gpu_idx], color)
                         if is_mine:
@@ -167,14 +168,17 @@ class DashBoard:  # Upper body
         return all_mine_masks
     
     def get_filter_mask(self):
+        if self.filter_dict == {}:
+            return {node.name: [False]*self.max_num_node_gpus for node in self.nodes}
+        name_to_job_object = {'user_id':'userid', 'job_id':'id', 'arrayjobid':'arrayjobid', 'arraytaskid':'arraytaskid', 'job_name':'name', 'node_name':'tres_dict'}
         all_filter_masks:Dict[str,List[bool]] = {node.name: [True]*self.max_num_node_gpus for node in self.nodes}
         for job in self.jobs:
             for key, values in self.filter_dict.items():
-                if job[key] not in values:
+                properties = getattr(job, name_to_job_object[key])
+                for v in values:
                     for nodename, tres_dict in job.tres_dict.items():
                         for gpu_idx in tres_dict['gpus']:
-                            all_filter_masks[nodename][gpu_idx] = False
-                    break
+                            all_filter_masks[nodename][gpu_idx] = not all_filter_masks[nodename][gpu_idx] or not (v in properties)
         return all_filter_masks
 
     def get_occupancy_mask(self):
@@ -236,7 +240,10 @@ class Legend:  # Lower body
             df = df[df['user_id'].str.contains(os.environ['USER'])]
         if self.filter_dict != {}:
             for key, values in self.filter_dict.items():
-                df = df[df[key].isin(values)]
+                _df = pd.DataFrame()
+                for value in values:
+                    _df = pd.concat([_df, df[df[key].str.contains(value)]])
+                df = pd.merge(df, _df, how='inner',)
         color_legend = df['job_id'].map(lambda jid: colorize('********', get_color_from_idx(int(jid))))  # before the column job_id overwritten
         df['job_id'] = df['job_arr_id'].fillna(df['job_id'])  # firstly with job_arr_id, and overwrite with job_id only for none rows
         del df['job_arr_id']
