@@ -35,7 +35,7 @@ class DashBoard:  # Upper body
         nodes:List[Node], jobs:List[Job],
 
         show_index:bool=False, show_gpu_memory:bool=False, show_gpu_util:bool=False,
-        show_only_mine:bool=False
+        show_only_mine:bool=False, filter_dict:Dict[str, List[str]]={}
     ):
         self.nodes = nodes
         self.jobs = jobs
@@ -43,7 +43,8 @@ class DashBoard:  # Upper body
         self.show_index = show_index
         self.show_gpu_memory = show_gpu_memory
         self.show_gpu_util = show_gpu_util
-        self.show_only_mine = show_only_mine
+        self.show_only_mine = show_only_mine if filter_dict == {} else False
+        self.filter_dict = filter_dict
 
         self.max_num_node_gpus = max(map(lambda node: node.num_gpus_total, self.nodes))
         self.delimiter_within_gpu = '|'
@@ -53,6 +54,7 @@ class DashBoard:  # Upper body
             self.delimiter_between_gpu = ' '
         self.char_fill_hidden = '#'
         self.all_mine_masks = self.get_mine_mask()
+        self.all_filter_masks = self.get_filter_mask()
         self.all_occupancy_masks = self.get_occupancy_mask()
         self.all_gpu_items = self.build_items()
         self.all_gpu_items = self.stylize_items(self.all_gpu_items)
@@ -73,12 +75,14 @@ class DashBoard:  # Upper body
         all_gpu_items:Dict[str,List[str]] = {}
         for node in self.nodes:
             mine_masks = self.all_mine_masks[node.name]
+            filter_masks = self.all_filter_masks[node.name]
             occupancy_masks = self.all_occupancy_masks[node.name]
             gpu_items:List[str] = []
             for gpu_idx in range(self.max_num_node_gpus):
                 is_mine = mine_masks[gpu_idx]
+                is_filtered = filter_masks[gpu_idx]
                 is_occupied = occupancy_masks[gpu_idx]
-                will_be_hidden = self.show_only_mine and not is_mine
+                will_be_hidden = self.show_only_mine and not is_mine or is_filtered
                 if gpu_idx >= node.num_gpus_total:  # pseudo item to align, as colorizer's width varies aligning with width does not work
                     gpu_items.append(' '*len(gpu_item))
                 else:
@@ -161,6 +165,17 @@ class DashBoard:  # Upper body
                     for gpu_idx in tres_dict['gpus']:
                         all_mine_masks[nodename][gpu_idx] = True
         return all_mine_masks
+    
+    def get_filter_mask(self):
+        all_filter_masks:Dict[str,List[bool]] = {node.name: [True]*self.max_num_node_gpus for node in self.nodes}
+        for job in self.jobs:
+            for key, values in self.filter_dict.items():
+                if job[key] not in values:
+                    for nodename, tres_dict in job.tres_dict.items():
+                        for gpu_idx in tres_dict['gpus']:
+                            all_filter_masks[nodename][gpu_idx] = False
+                    break
+        return all_filter_masks
 
     def get_occupancy_mask(self):
         all_occupancy_masks:Dict[str,List[bool]] = {node.name: [False]*self.max_num_node_gpus for node in self.nodes}
@@ -176,7 +191,7 @@ class Legend:  # Lower body
             jobs:List[Job],
 
             show_index:bool=False, show_gpu_memory:bool=False, show_gpu_util:bool=False,
-            show_only_mine:bool=False
+            show_only_mine:bool=False, filter_dict:Dict[str, List[str]]={}
         ):
         self.jobs = jobs
         self.space_placeholder = '@'  # not to be splitted by str.split
@@ -185,7 +200,8 @@ class Legend:  # Lower body
         self.show_index = show_index
         self.show_gpu_memory = show_gpu_memory
         self.show_gpu_util = show_gpu_util
-        self.show_only_mine = show_only_mine
+        self.show_only_mine = show_only_mine if filter_dict == {} else False
+        self.filter_dict = filter_dict
 
         self.default_colnames = ['colors', 'user_id', 'job_id', 'job_arr_id', 'job_arr_task_id', 'job_name', 'node_name', 'gpus', 'cpus', 'mem']
         self.default_display_colnames = [colname.replace('job_arr_task_id', 'arr_idx').upper() for colname in self.default_colnames if colname != 'job_arr_id']
@@ -218,6 +234,9 @@ class Legend:  # Lower body
         df = pd.DataFrame.from_records(records, columns=self.default_colnames[1:])
         if self.show_only_mine:
             df = df[df['user_id'].str.contains(os.environ['USER'])]
+        if self.filter_dict != {}:
+            for key, values in self.filter_dict.items():
+                df = df[df[key].isin(values)]
         color_legend = df['job_id'].map(lambda jid: colorize('********', get_color_from_idx(int(jid))))  # before the column job_id overwritten
         df['job_id'] = df['job_arr_id'].fillna(df['job_id'])  # firstly with job_arr_id, and overwrite with job_id only for none rows
         del df['job_arr_id']

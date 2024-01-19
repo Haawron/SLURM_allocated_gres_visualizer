@@ -133,3 +133,37 @@ def resolve_element_expr(element_expr:str):
 
 def MiB2GiB(MiB:int) -> float:
     return MiB / 1024
+
+def filter_string_parser(filter_string:str) -> Dict[str, List[str]]:
+    """Parse filter string to a list of filter strings
+
+    Parameters
+    ----------
+    filter_string : str
+        e.g. "jobname=foo jobid={1,2-4} userid=bar"
+
+    Returns
+    -------
+    Dict[str:List[str]]
+        e.g. {"jobname": ["foo"], "jobid": ["1", "2", "3", "4"], "userid": ["bar"]}
+    """
+    available_keys = ['job_id', 'user_id', 'job_name', 'node', 'arrayjobid', 'arraytaskid']
+    abbreviation_keys = ['id', 'uid', 'n', 'w']
+    try:
+        filter_dict = {}
+        filter_string = filter_string.split(' ')
+
+        for filter_string in filter_string:
+            key, value = filter_string.split('=')
+            value = value.strip('{}')
+            if key in abbreviation_keys:
+                key = available_keys[abbreviation_keys.index(key)]
+            if key not in available_keys:
+                raise
+            if '-' in value:
+                value = resolve_index_expr(value[1])
+            filter_dict[key] = value
+        return filter_dict
+    except:
+        print('Filter string is not valid. Please check the format.')
+        return {}

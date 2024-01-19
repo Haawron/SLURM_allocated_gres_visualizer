@@ -21,6 +21,7 @@ def get_display_options():
         'show_gpu_memory': args.full or args.gpu_memory,
         'show_gpu_util': args.full or args.gpu_util,
         'show_only_mine': args.only_mine,
+        'filter_string': args.filter,
     }
     return display_options
 

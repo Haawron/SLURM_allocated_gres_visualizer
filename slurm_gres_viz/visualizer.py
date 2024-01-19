@@ -16,7 +16,7 @@ class SlurmTresVisualizer:
         test_mode:bool=False,
 
         show_index:bool=False, show_gpu_memory:bool=False, show_gpu_util:bool=False,
-        show_only_mine:bool=False
+        show_only_mine:bool=False, filter_string:str=''
     ):
         self.node_strings = node_strings
         self.job_strings = job_strings
@@ -27,6 +27,7 @@ class SlurmTresVisualizer:
         self.show_gpu_memory = show_gpu_memory
         self.show_gpu_util = show_gpu_util
         self.show_only_mine = show_only_mine
+        self.filter_string = filter_string
 
         self.nodes, self.jobs = self.get_infos()
 
@@ -79,7 +80,8 @@ class SlurmTresVisualizer:
             show_index=self.show_index,
             show_gpu_memory=self.show_gpu_memory,
             show_gpu_util=self.show_gpu_util,
-            show_only_mine=self.show_only_mine
+            show_only_mine=self.show_only_mine,
+            filter_string=self.filter_string
         )
         displayer.show()
 
