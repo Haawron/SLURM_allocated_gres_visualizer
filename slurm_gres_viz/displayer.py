@@ -178,7 +178,8 @@ class DashBoard:  # Upper body
                 for v in values:
                     for nodename, tres_dict in job.tres_dict.items():
                         for gpu_idx in tres_dict['gpus']:
-                            all_filter_masks[nodename][gpu_idx] = not all_filter_masks[nodename][gpu_idx] or not (v in properties)
+                            if key == 'user_id':
+                                all_filter_masks[nodename][gpu_idx] = not all_filter_masks[nodename][gpu_idx] or not (v in properties)
         return all_filter_masks
 
     def get_occupancy_mask(self):
@@ -241,8 +242,12 @@ class Legend:  # Lower body
         if self.filter_dict != {}:
             for key, values in self.filter_dict.items():
                 _df = pd.DataFrame()
-                for value in values:
-                    _df = pd.concat([_df, df[df[key].str.contains(value)]])
+                if key == 'user_id':
+                    for value in values:
+                        _df = pd.concat([_df, df[df[key].str.contains(value)]])
+                else:
+                    for value in values:
+                        _df = pd.concat([_df, df[df[key] == value]])
                 df = pd.merge(df, _df, how='inner',)
         color_legend = df['job_id'].map(lambda jid: colorize('********', get_color_from_idx(int(jid))))  # before the column job_id overwritten
         df['job_id'] = df['job_arr_id'].fillna(df['job_id'])  # firstly with job_arr_id, and overwrite with job_id only for none rows
