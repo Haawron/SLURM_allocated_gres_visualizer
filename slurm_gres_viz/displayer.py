@@ -177,7 +177,10 @@ class DashBoard:  # Upper body
                 _property = getattr(job, name_to_job_object[key])
                 for nodename, tres_dict in job.tres_dict.items():
                     for gpu_idx in tres_dict['gpus']:
-                        all_filter_masks[nodename][gpu_idx] = all_filter_masks[nodename][gpu_idx] and sum([v in _property or v == _property for v in values]) # NAND operation
+                        all_filter_masks[nodename][gpu_idx] = \
+                            all_filter_masks[nodename][gpu_idx] and \
+                            sum([_property == value if sum([c >= '0' and c <= '9' for c in _property])==len(_property) \
+                                else  value in _property for value in values ])
         for nodename, filter_masks in all_filter_masks.items():
             for gpu_idx, is_filtered in enumerate(filter_masks):
                 all_filter_masks[nodename][gpu_idx] = not all_filter_masks[nodename][gpu_idx]
