@@ -174,11 +174,13 @@ class DashBoard:  # Upper body
         all_filter_masks:Dict[str,List[bool]] = {node.name: [True]*self.max_num_node_gpus for node in self.nodes}
         for job in self.jobs:
             for key, values in self.filter_dict.items():
-                properties = getattr(job, name_to_job_object[key])
-                for v in values:
-                    for nodename, tres_dict in job.tres_dict.items():
-                        for gpu_idx in tres_dict['gpus']:
-                            all_filter_masks[nodename][gpu_idx] = not all_filter_masks[nodename][gpu_idx] or not (v in properties)
+                _property = getattr(job, name_to_job_object[key])
+                for nodename, tres_dict in job.tres_dict.items():
+                    for gpu_idx in tres_dict['gpus']:
+                        all_filter_masks[nodename][gpu_idx] = all_filter_masks[nodename][gpu_idx] and sum([v in _property or v == _property for v in values]) # NAND operation
+        for nodename, filter_masks in all_filter_masks.items():
+            for gpu_idx, is_filtered in enumerate(filter_masks):
+                all_filter_masks[nodename][gpu_idx] = not all_filter_masks[nodename][gpu_idx]
         return all_filter_masks
 
     def get_occupancy_mask(self):
