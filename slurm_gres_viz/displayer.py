@@ -178,8 +178,7 @@ class DashBoard:  # Upper body
                 for v in values:
                     for nodename, tres_dict in job.tres_dict.items():
                         for gpu_idx in tres_dict['gpus']:
-                            if key == 'user_id':
-                                all_filter_masks[nodename][gpu_idx] = not all_filter_masks[nodename][gpu_idx] or not (v in properties)
+                            all_filter_masks[nodename][gpu_idx] = not all_filter_masks[nodename][gpu_idx] or not (v in properties)
         return all_filter_masks
 
     def get_occupancy_mask(self):
@@ -242,7 +241,7 @@ class Legend:  # Lower body
         if self.filter_dict != {}:
             for key, values in self.filter_dict.items():
                 _df = pd.DataFrame()
-                if key == 'user_id':
+                if key == 'user_id' or key == 'job_name' :
                     for value in values:
                         _df = pd.concat([_df, df[df[key].str.contains(value)]])
                 else:
