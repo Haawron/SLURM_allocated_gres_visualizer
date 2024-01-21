@@ -24,6 +24,8 @@ parser.add_argument('-gm', '--gpu-memory', action='store_true',
 parser.add_argument('-gu', '--gpu-util', action='store_true',
                     help='asd')
 
+parser.add_argument('-p', '--filter', type=str, default='', help='give a filter string. e.g. "job_name=foo" "n=foo" "job_id={1,2-4}" "id={1,2-4}" "user_id=bar" "uid=bar" "node=foo-1" "w=foo-1"', nargs='*')
+
 # iterate
 parser.add_argument('-l', '--loop', type=rate_in_range, default=-1,
                     help='asd')
